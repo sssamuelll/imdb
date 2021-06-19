@@ -1,0 +1,101 @@
+#! /home/mskdl6/python-projects/imdb/venv/bin/python
+
+from imdb import IMDb, IMDbError
+from bs4 import BeautifulSoup
+import requests
+from rich.console import Console
+import sys
+import re
+
+ia = IMDb()
+
+console = Console()
+
+def search(movie):
+    try:
+        results = ia.search_movie(movie)
+        
+        movie = results[0]
+        
+        ia.update(movie, info=['vote details','release info'])
+        console.print('[u bold]Movie:[/u bold]', movie)
+        yts, subdivx = get_names_for_search(movie)
+        console.print('[u bold]Date:[/u bold] '+re.sub("::"," ",str(movie['release dates'][0])))
+        console.print('[u bold]IMDb Rate:[/u bold] ' + str(movie['median']))
+        find_yts(yts)
+        linksub = find_subdivx(subdivx)
+        console.print('[u bold]Subs:[/u bold] '+str(linksub))
+       
+    except:
+        print("Ha ocurrido un error, por favor intente de nuevo")
+
+def get_names_for_search(movie):
+    yts = re.sub("[\W\s]+","-",str(movie)).lower()+"-"+str(re.findall("\d{4}",str(movie['release dates'][0]))[0])
+    subdivx = re.sub("[\W\s]+","+",str(movie)).lower()+"+"+str(re.findall("\d{4}",str(movie['release dates'][0]))[0])
+    return(yts,subdivx)
+
+def find_yts(yts):
+    try:
+        ytslink = 'https://yts.mx/movies/'+ yts
+        r = requests.get(ytslink)
+        soup = BeautifulSoup(r.content, 'html.parser')
+        tags = soup.find_all(match_class(["magnet-download"]))
+        for tag in tags:
+            title = tag['title']
+            if re.search(r'\b720p\b',str(title)):
+                console.print('[u bold]TORRENT:[/u bold]', tag.get('href', None))
+                break
+        return
+    except:
+        print("No encontramos el link del torrent en yts")
+
+def find_subdivx(subdivx):
+    try:
+        subdivxlink = 'https://www.subdivx.com/index.php?buscar='+ subdivx + '&accion=5&masdesc=&subtitulos=1&realiza_b=1'
+        
+        d = requests.get(subdivxlink)
+        soup = BeautifulSoup(d.content, 'html.parser')
+        
+        tags1 = soup.find_all('a',class_='titulo_menu_izq')
+        tags2 = soup.find_all('div',id="buscador_detalle_sub")
+
+        for i in range(len(tags2)):
+            texto = tags2[i].contents[0]
+            if re.search(r'\byts\b',str(texto)) or re.search(r'\byify\b',str(texto)):
+                subs= tags1[i]['href']
+                return get_subs(subs)
+    except:
+        print("No encontramos el link del torrent en yts")
+
+    return
+
+def match_class(target):                                                        
+    def do_match(tag):                                                          
+        classes = tag.get('class', [])                                          
+        return all(c in classes for c in target)                                
+    return do_match                                                             
+
+def match_id(target):                                                        
+    def do_match(tag):                                                          
+        ids = tag.get('id', [])                                          
+        return all(c in ids for c in target)                                
+    return do_match 
+
+def get_subs(subs):
+    d = requests.get(subs)
+    soup = BeautifulSoup(d.content, 'html.parser')
+    sublink = soup.find('a',class_="link1")
+    link = "https://www.subdivx.com/"+str(sublink['href'])
+    return link
+
+if __name__== "__main__":
+    i=1
+    word = ""
+    for i in range(len(sys.argv)):
+        if i > 1:
+            word = word + " " + sys.argv[i]
+        elif i == 1:
+            word = sys.argv[i]
+        i=i+1
+
+    search(movie=word)
